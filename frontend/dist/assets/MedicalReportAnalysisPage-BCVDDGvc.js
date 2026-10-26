@@ -1,4 +1,4 @@
-import{S as e,c as t,h as n,i as r,m as i,n as a,o,p as s,r as c,s as l,y as u}from"./index-DF3kmc8M.js";import{a as d,n as f,r as p,t as m}from"./Card-B9IqKzPG.js";import{t as h}from"./MetricCard-4H8ayTpH.js";import{n as g,t as _}from"./Tabs-CGxRsAGE.js";var v=e(u(),1),y=`Sample data for a fictional patient. These are not real results and no person is described.`;function b(e,t,n,r){return{reportId:`rpt-demo-${t}`,reportName:e,page:t,line:n,snippet:r}}var x=`sample-blood-count.txt`,S=`sample-followup.txt`,C=`NORTHBRIDGE MEDICAL CENTRE
+import{S as e,c as t,h as n,i as r,m as i,n as a,o,p as s,r as c,s as l,y as u}from"./index-CRdBTqR3.js";import{a as d,n as f,r as p,t as m}from"./Card-EuFj32c5.js";import{t as h}from"./MetricCard-DeFnyFS1.js";import{n as g,t as _}from"./Tabs-Ciy_s9aH.js";var v=e(u(),1),y=`Sample data for a fictional patient. These are not real results and no person is described.`;function b(e,t,n,r){return{reportId:`rpt-demo-${t}`,reportName:e,page:t,line:n,snippet:r}}var x=`sample-blood-count.txt`,S=`sample-followup.txt`,C=`NORTHBRIDGE MEDICAL CENTRE
 Complete Blood Count
 Date: 2026-01-15
 
