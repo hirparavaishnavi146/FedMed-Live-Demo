@@ -1,0 +1,90 @@
+# Render Blueprint for the public FedMed demo.
+#
+# ONE Python service, ONE origin: the API serves the built dashboard itself, so the
+# browser makes same-origin requests. Nothing about the hostname is compiled into the
+# frontend, and there is no CORS origin to configure.
+#
+# How this file gets used: Render dashboard -> New + -> Blueprint -> pick this
+# repository (public, so no GitHub App or repo-admin step is involved).
+
+services:
+  - type: web
+    name: fedmed-public
+    runtime: python
+    # Free tier: 512 MB, 0.1 CPU. Spins down after 15 minutes without traffic and takes
+    # about a minute to wake on the next visit. No durable local storage is needed:
+    # uploads are staged in the system temp directory, which is ephemeral by design.
+    plan: free
+    rootDir: backend
+    # requirements-web.txt, NOT the full requirements.txt: serving the dashboard and the
+    # medical-report workflow does not need torch, MONAI, scipy, nibabel, opacus or
+    # Flower (torch alone is 511 MB against a 512 MB instance).
+    buildCommand: pip install --upgrade pip && pip install -r requirements-web.txt
+    # $PORT is assigned by Render; 0.0.0.0 is required because the application's own
+    # default host is 127.0.0.1, reachable only from inside the instance.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.14.8"
+      - key: FEDMED_ENVIRONMENT
+        value: production
+      - key: FEDMED_LOG_LEVEL
+        value: info
+      # Serve the built pages from this same process and port: one origin, no CORS.
+      - key: FEDMED_SERVE_FRONTEND
+        value: "true"
+      # Relative to rootDir (backend/), so this resolves to <repo>/frontend/dist.
+      - key: FEDMED_FRONTEND_DIR
+        value: ../frontend/dist
+      # Ephemeral upload staging, outside the repository tree.
+      - key: FEDMED_STAGING_DIR
+        value: /tmp/fedmed-staging
+      # Reads stay open so the dashboard is browsable; mutating and admin routes stay
+      # protected regardless. Unset FEDMED_API_KEYS means those routes refuse with 503
+      # auth_not_configured rather than silently allowing anonymous writes.
+      - key: FEDMED_AUTH_REQUIRED_FOR_READS
+        value: "false"
+      # Opens the medical-report workflow to anonymous visitors. A public demo has no
+      # alternative: a Vite build compiles every VITE_ value into the JavaScript a
+      # browser downloads, so an API key can never be shipped to the page.
+      #
+      # It covers the medical-report routes ONLY. Serve synthetic examples only -- this
+      # does not make uploads private or safe for a real person's records.
+      - key: FEDMED_MEDICAL_REPORTS_PUBLIC_DEMO
+        value: "true"
+      # --- AI-generated report sections (optional) ---------------------------------
+      # Set FEDMED_AI_API_KEY in the Render dashboard to switch them on. Left unset,
+      # the generated sections report themselves unavailable and the rest of the
+      # report analysis still works.
+      - key: FEDMED_AI_BASE_URL
+        value: "https://generativelanguage.googleapis.com/v1beta/openai"
+      - key: FEDMED_AI_API_KEY
+        sync: false
+      - key: FEDMED_AI_MODEL
+        value: "gemini-3.5-flash-lite"
+      - key: FEDMED_AI_TIMEOUT_SECONDS
+        value: "90"
+
+# Deliberately NOT configured, and why:
+#
+#   FEDMED_CORS_ORIGINS -- not needed with a single origin. A wrong value here is worse
+#     than omitting it.
+#   FEDMED_SECURE_AGGREGATION_SECRET -- unset keeps secure aggregation inactive rather
+#     than running with a guessable secret.
+#   FEDMED_TLS_CERT_FILE / FEDMED_TLS_KEY_FILE -- Render terminates TLS at the edge.
+#
+# NOT SUPPORTED ON THIS TIER: OCR. tesseract-ocr is a system package pip cannot install,
+# so a scanned report or a photograph of one is reported as unreadable rather than passed
+# off as empty. Text files and digital PDFs work.
+#
+# TRAINING IS NOT AVAILABLE HERE: torch is not installed, so POST /api/v1/training/start
+# answers 503 training_unavailable. That is the honest answer, not a bug.
+#
+# frontend/dist IS COMMITTED. Render's Python runtime has no Node, so rebuild it after any
+# frontend change:
+#
+#     cd frontend
+#     VITE_API_SAME_ORIGIN=true VITE_API_BASE_URL="" VITE_USE_DEMO_DATA=false \
+#     VITE_HASH_ROUTER=false VITE_API_KEY="" npm run build

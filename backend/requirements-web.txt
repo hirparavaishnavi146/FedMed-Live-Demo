@@ -1,0 +1,71 @@
+# Lean requirements for the DEPLOYED web service.
+#
+# Why this file exists
+# --------------------
+# The API's read paths do not need the machine-learning stack. Only these are
+# required to serve the dashboard:
+#
+#     fastapi, uvicorn, pydantic, pydantic-settings, python-dotenv,
+#     python-multipart, numpy, cryptography
+#
+# Deliberately NOT installed here, and why:
+#
+#     torch      (511 MB) parsed only by app/federated/{client,data,model}.py
+#     scipy       (99 MB) only app/imaging uses it
+#     monai       (16 MB) only app/imaging/preprocess.py imports it
+#     nibabel     (11 MB) only app/imaging/synthetic.py imports it
+#     opacus       (2 MB) imported on demand, only by the DP accountant call
+#     flwr         (8 MB) only the distributed Flower entry points import it
+#
+# app/federated/simulation.py and app/services/federated_service.py import the
+# torch-backed modules lazily, so the API starts and serves without them. When
+# torch is absent, GET /api/v1/training/config reports modelParameters as null
+# (an explicit absence, never 0) and POST /api/v1/training/start returns
+# 503 training_unavailable with a readable message. The dashboard keeps working.
+#
+# To run federated training in the deployed service instead, install the full
+# requirements.txt and use at least a 1 GB instance (measured: 340 MB idle,
+# 348 MB peak with torch loaded).
+#
+# Verified locally: importing app.main with this set loads no torch, monai,
+# nibabel, scipy, opacus or flwr, and every read endpoint returns 200.
+
+# --- Web API -----------------------------------------------------------------
+fastapi==0.138.2
+uvicorn[standard]==0.49.0
+pydantic==2.14.0
+pydantic-settings==2.15.0
+python-dotenv==1.2.4
+python-multipart==0.0.32
+
+# --- Numeric core ------------------------------------------------------------
+# numpy is used directly by the read paths: FedAvg weighting and the metrics
+# history are plain numpy arrays serialised to JSON.
+numpy==2.5.3
+
+# --- Security ----------------------------------------------------------------
+# Imported at module scope by app.security (used by app/security/tls.py for the
+# self-signed development certificate), so it must be present.
+cryptography==46.0.7
+
+# --- Document text -----------------------------------------------------------
+# pypdf needs no system libraries and is the only way a PDF report yields text:
+# without it every uploaded PDF reports "PDF support is not installed in this
+# deployment". Medical reports are usually PDFs, so this is not optional for the
+# medical-report feature, and it costs ~300 KB.
+#
+# The import is lazy (app/cases/reports.py), so the API still boots without it --
+# it simply reports the degraded capability honestly instead of failing.
+pypdf==6.20.0
+
+# NOT installed here, and deliberate:
+#
+#   pytesseract + Pillow + pdf2image   OCR for scanned pages and images. Also needs
+#                                      the system tesseract binary (and Poppler for
+#                                      pdf2image), which pip cannot provide, so it is
+#                                      installed in the container image instead --
+#                                      see the Dockerfile the Hugging Face Space uses.
+#                                      Without it, an image report is reported as
+#                                      not readable rather than passed off as empty.
+#   torch, monai, scipy, nibabel, opacus, flwr   the ML stack; see the notes above.
+httpx

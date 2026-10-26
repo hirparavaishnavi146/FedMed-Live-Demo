@@ -1,0 +1,5 @@
+# Local virtualenv used only to test the payload
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
