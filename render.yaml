@@ -55,13 +55,13 @@ services:
       - key: FEDMED_MEDICAL_REPORTS_PUBLIC_DEMO
         value: "true"
       # --- AI-generated report sections (optional) ---------------------------------
-      # Set FEDMED_AI_API_KEY in the Render dashboard to switch them on. Left unset,
-      # the generated sections report themselves unavailable and the rest of the
+      # The generated sections (complications, clinical suggestions, doctor-ready
+      # narrative) call an OpenAI-compatible endpoint. To switch them on, add
+      # FEDMED_AI_API_KEY in the Render dashboard -> Environment, then redeploy.
+      # Left absent, those sections report themselves unavailable and the rest of the
       # report analysis still works.
       - key: FEDMED_AI_BASE_URL
         value: "https://generativelanguage.googleapis.com/v1beta/openai"
-      - key: FEDMED_AI_API_KEY
-        sync: false
       - key: FEDMED_AI_MODEL
         value: "gemini-3.5-flash-lite"
       - key: FEDMED_AI_TIMEOUT_SECONDS
