@@ -1,65 +1,38 @@
 # Render Blueprint for the public FedMed demo.
 #
-# ONE Python service, ONE origin: the API serves the built dashboard itself, so the
-# browser makes same-origin requests. Nothing about the hostname is compiled into the
+# One service, one container, one origin: the API serves the built dashboard itself, so
+# the browser makes same-origin requests. Nothing about the hostname is compiled into the
 # frontend, and there is no CORS origin to configure.
 #
 # How this file gets used: Render dashboard -> New + -> Blueprint -> pick this
-# repository (public, so no GitHub App or repo-admin step is involved).
+# repository (public, so no GitHub App or repo-admin step is involved) -> Apply.
 
 services:
   - type: web
-    name: fedmed-public
-    runtime: python
-    # Free tier: 512 MB, 0.1 CPU. Spins down after 15 minutes without traffic and takes
-    # about a minute to wake on the next visit. No durable local storage is needed:
-    # uploads are staged in the system temp directory, which is ephemeral by design.
+    name: fedmed-live
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Free tier: 512 MB, 0.1 CPU. Sleeps after 15 minutes without traffic and takes about
+    # a minute to wake. Nothing here needs durable storage: uploads are staged in the
+    # system temp directory, which is ephemeral by design.
     plan: free
-    rootDir: backend
-    # requirements-web.txt, NOT the full requirements.txt: serving the dashboard and the
-    # medical-report workflow does not need torch, MONAI, scipy, nibabel, opacus or
-    # Flower (torch alone is 511 MB against a 512 MB instance).
-    buildCommand: pip install --upgrade pip && pip install -r requirements-web.txt
-    # $PORT is assigned by Render; 0.0.0.0 is required because the application's own
-    # default host is 127.0.0.1, reachable only from inside the instance.
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     autoDeploy: true
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.14.8"
-      - key: FEDMED_ENVIRONMENT
-        value: production
-      - key: FEDMED_LOG_LEVEL
-        value: info
-      # Serve the built pages from this same process and port: one origin, no CORS.
-      - key: FEDMED_SERVE_FRONTEND
-        value: "true"
-      # Relative to rootDir (backend/), so this resolves to <repo>/frontend/dist.
-      - key: FEDMED_FRONTEND_DIR
-        value: ../frontend/dist
-      # Ephemeral upload staging, outside the repository tree.
-      - key: FEDMED_STAGING_DIR
-        value: /tmp/fedmed-staging
-      # Reads stay open so the dashboard is browsable; mutating and admin routes stay
-      # protected regardless. Unset FEDMED_API_KEYS means those routes refuse with 503
-      # auth_not_configured rather than silently allowing anonymous writes.
-      - key: FEDMED_AUTH_REQUIRED_FOR_READS
-        value: "false"
-      # Opens the medical-report workflow to anonymous visitors. A public demo has no
-      # alternative: a Vite build compiles every VITE_ value into the JavaScript a
-      # browser downloads, so an API key can never be shipped to the page.
+      # --- OCR: why this deployment is a container, not a native Python runtime ------
+      # tesseract-ocr and poppler-utils are installed in ./Dockerfile. pip cannot provide
+      # them, so on a native runtime a scanned report — or a photograph of one, which is
+      # what most people actually have — is reported as unreadable. In the container it is
+      # read like any other report.
       #
-      # It covers the medical-report routes ONLY. Serve synthetic examples only -- this
-      # does not make uploads private or safe for a real person's records.
-      - key: FEDMED_MEDICAL_REPORTS_PUBLIC_DEMO
-        value: "true"
-      # --- AI-generated report sections (optional) ---------------------------------
-      # The generated sections (complications, clinical suggestions, doctor-ready
-      # narrative) call an OpenAI-compatible endpoint. To switch them on, add
-      # FEDMED_AI_API_KEY in the Render dashboard -> Environment, then redeploy.
-      # Left absent, those sections report themselves unavailable and the rest of the
-      # report analysis still works.
+      # --- AI-generated report sections ---------------------------------------------
+      # These call an OpenAI-compatible endpoint. Add the key in the Render dashboard ->
+      # this service -> Environment -> FEDMED_AI_API_KEY, then redeploy. It is NOT in this
+      # file: this repository is public, so a committed key would be a published key.
+      #
+      # Without it those three sections report themselves unavailable, and every other
+      # part of the analysis — extracted values, comparison, abnormality detection and
+      # urgency from explicit warning terms — still works.
       - key: FEDMED_AI_BASE_URL
         value: "https://generativelanguage.googleapis.com/v1beta/openai"
       - key: FEDMED_AI_MODEL
@@ -69,22 +42,27 @@ services:
 
 # Deliberately NOT configured, and why:
 #
-#   FEDMED_CORS_ORIGINS -- not needed with a single origin. A wrong value here is worse
-#     than omitting it.
+#   FEDMED_API_KEYS -- unset means mutating and admin routes refuse with 503
+#     auth_not_configured rather than silently allowing anonymous writes. The
+#     medical-report routes are opened separately by FEDMED_MEDICAL_REPORTS_PUBLIC_DEMO,
+#     which ./Dockerfile sets, because a Vite build compiles every VITE_ value into the
+#     JavaScript a browser downloads, so an API key can never be shipped to the page.
+#   FEDMED_CORS_ORIGINS -- not needed with a single origin. A wrong value is worse than
+#     omitting it.
 #   FEDMED_SECURE_AGGREGATION_SECRET -- unset keeps secure aggregation inactive rather
 #     than running with a guessable secret.
 #   FEDMED_TLS_CERT_FILE / FEDMED_TLS_KEY_FILE -- Render terminates TLS at the edge.
 #
-# NOT SUPPORTED ON THIS TIER: OCR. tesseract-ocr is a system package pip cannot install,
-# so a scanned report or a photograph of one is reported as unreadable rather than passed
-# off as empty. Text files and digital PDFs work.
-#
 # TRAINING IS NOT AVAILABLE HERE: torch is not installed, so POST /api/v1/training/start
 # answers 503 training_unavailable. That is the honest answer, not a bug.
 #
-# frontend/dist IS COMMITTED. Render's Python runtime has no Node, so rebuild it after any
-# frontend change:
+# An older native-Python service from an earlier attempt is NOT managed by this file.
+# Delete it from its own Settings page once this one is verified, so only one demo exists.
+#
+# frontend/dist IS COMMITTED. The container has no Node, so rebuild it after any frontend
+# change and push:
 #
 #     cd frontend
 #     VITE_API_SAME_ORIGIN=true VITE_API_BASE_URL="" VITE_USE_DEMO_DATA=false \
-#     VITE_HASH_ROUTER=false VITE_API_KEY="" npm run build
+#     VITE_HASH_ROUTER=false VITE_API_KEY="" VITE_API_TIMEOUT_SECONDS=75 \
+#     VITE_API_REPORT_TIMEOUT_SECONDS=180 npm run build
